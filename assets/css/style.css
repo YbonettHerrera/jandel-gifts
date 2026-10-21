@@ -1,0 +1,39 @@
+:root {
+    --color-primario: #1a1a2e;
+    --color-secundario: #e94560;
+    --color-acento: #f5a623;
+    --color-fondo: #f8f9fa;
+    --color-texto: #333333;
+}
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: var(--color-fondo);
+    color: var(--color-texto);
+}
+a { color: var(--color-secundario); text-decoration: none; }
+a:hover { color: var(--color-acento); }
+.btn-primary { background-color: var(--color-secundario); border-color: var(--color-secundario); }
+.btn-primary:hover { background-color: var(--color-acento); border-color: var(--color-acento); }
+.btn-outline-primary { color: var(--color-secundario); border-color: var(--color-secundario); }
+.btn-outline-primary:hover { background-color: var(--color-secundario); color: #fff; }
+.card-producto { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); transition: transform 0.2s; overflow: hidden; }
+.card-producto:hover { transform: translateY(-5px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+.card-producto img { height: 220px; object-fit: cover; width: 100%; }
+.card-producto .precio { font-size: 1.2rem; font-weight: 700; color: var(--color-secundario); }
+.precio { font-size: 1.2rem; font-weight: 700; color: var(--color-secundario); }
+.badge-categoria { background-color: var(--color-acento); color: #fff; font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; display: inline-block; }
+.hero { background: linear-gradient(135deg, var(--color-primario), #16213e); color: #fff; padding: 60px 0; text-align: center; margin-bottom: 2rem; }
+.hero h1 { font-size: 2.5rem; font-weight: 800; }
+.hero p { font-size: 1.1rem; opacity: 0.85; }
+#contador-carrito { font-size: 0.7rem; vertical-align: top; }
+.resumen-carrito { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+.form-personalizacion { background: #fff8f0; border: 2px dashed var(--color-acento); border-radius: 12px; padding: 20px; margin-top: 15px; }
+.form-personalizacion h6 { color: var(--color-acento); font-weight: 700; }
+.sidebar-admin { background-color: var(--color-primario); min-height: 100vh; padding: 20px 0; }
+.sidebar-admin a { color: #ccc; display: block; padding: 10px 20px; border-radius: 8px; margin: 2px 10px; }
+.sidebar-admin a:hover { background-color: var(--color-secundario); color: #fff; }
+.badge-estado { padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+@media (max-width: 768px) {
+    .hero h1 { font-size: 1.8rem; }
+    .card-producto img { height: 180px; }
+}
