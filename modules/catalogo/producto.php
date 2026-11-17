@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/precios.php';
 session_start();
 $conn = conectar();
 
@@ -7,7 +8,8 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 $producto = null;
 if ($id > 0) {
-    $stmt = $conn->prepare("SELECT p.*, c.nombre AS categoria
+    $stmt = $conn->prepare("SELECT p.*, c.nombre AS categoria,
+                                   (SELECT GROUP_CONCAT(po.ocasion SEPARATOR ', ') FROM producto_ocasion po WHERE po.id_producto = p.id) AS ocasiones
                             FROM productos p
                             JOIN categorias c ON p.id_categoria = c.id
                             WHERE p.id = ? AND p.activo = 1");
@@ -95,11 +97,26 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
         <div class="col-md-6">
             <p class="text-muted small mb-1"><?= htmlspecialchars($producto['categoria']) ?></p>
             <h2 class="fw-bold"><?= htmlspecialchars($producto['nombre']) ?></h2>
-            <?php if (!empty($producto['ocasion'])): ?>
-                <span class="badge badge-ocasion mb-3"><?= htmlspecialchars($producto['ocasion']) ?></span>
+            <?php if (!empty($producto['ocasiones'])): ?>
+                <div class="d-flex flex-wrap gap-1 mb-3">
+                    <?php foreach (explode(', ', $producto['ocasiones']) as $oc): ?>
+                        <span class="badge badge-ocasion"><?= htmlspecialchars($oc) ?></span>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
 
-            <h3 class="fw-bold text-dark my-3">$<?= number_format($producto['precio'], 0, ',', '.') ?></h3>
+            <?php if (descuentoVigente($producto)): ?>
+                <h3 class="fw-bold text-dark my-3">
+                    <span class="text-decoration-line-through text-muted fs-5">$<?= number_format($producto['precio'], 0, ',', '.') ?></span>
+                    $<?= number_format(precioFinal($producto), 0, ',', '.') ?>
+                    <span class="badge bg-danger fs-6 align-middle">-<?= rtrim(rtrim(number_format($producto['descuento_porcentaje'], 2, ',', ''), '0'), ',') ?>%</span>
+                </h3>
+                <?php if (!empty($producto['descuento_nombre'])): ?>
+                    <p class="small text-danger fw-semibold mb-3"><?= htmlspecialchars($producto['descuento_nombre']) ?></p>
+                <?php endif; ?>
+            <?php else: ?>
+                <h3 class="fw-bold text-dark my-3">$<?= number_format($producto['precio'], 0, ',', '.') ?></h3>
+            <?php endif; ?>
 
             <?php if (!empty($producto['descripcion'])): ?>
                 <p class="mb-3"><?= nl2br(htmlspecialchars($producto['descripcion'])) ?></p>

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/precios.php';
 session_start();
 $conn = conectar();
 
@@ -10,7 +11,10 @@ $ocasiones = ['Cumpleaños', 'Amor y amistad', 'Aniversario', 'Nacimiento', 'Agr
 $filtro_categoria = isset($_GET['categoria']) ? (int)$_GET['categoria'] : 0;
 $filtro_ocasion   = isset($_GET['ocasion']) ? $_GET['ocasion'] : '';
 
-$sql = "SELECT p.*, c.nombre AS categoria
+// ocasiones = lista de ocasiones del producto (tabla producto_ocasion), separadas por |
+$sql = "SELECT p.*, c.nombre AS categoria,
+               (SELECT GROUP_CONCAT(po.ocasion ORDER BY po.ocasion SEPARATOR '|')
+                  FROM producto_ocasion po WHERE po.id_producto = p.id) AS ocasiones
         FROM productos p
         JOIN categorias c ON p.id_categoria = c.id
         WHERE p.activo = 1";
@@ -23,7 +27,9 @@ if ($filtro_categoria > 0) {
     $types .= 'i';
 }
 if ($filtro_ocasion !== '' && in_array($filtro_ocasion, $ocasiones, true)) {
-    $sql .= " AND p.ocasion = ?";
+    // Un producto sin ocasiones marcadas aparece en todas; si tiene, debe incluir la elegida
+    $sql .= " AND (NOT EXISTS (SELECT 1 FROM producto_ocasion x WHERE x.id_producto = p.id)
+                   OR EXISTS (SELECT 1 FROM producto_ocasion y WHERE y.id_producto = p.id AND y.ocasion = ?))";
     $params[] = $filtro_ocasion;
     $types .= 's';
 }
@@ -55,6 +61,10 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
         .card-producto:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.08); }
         .card-producto img, .card-producto .sin-imagen { height: 200px; object-fit: cover; width: 100%; background: #fafafa; }
         .badge-ocasion { background: #f3c6cf; color: #7a2e3a; }
+        /* Botón principal más oscuro para buen contraste con el texto blanco (accesibilidad) */
+        .btn-primary { background-color: #c2294a; border-color: #c2294a; color: #fff; }
+        .btn-primary:hover, .btn-primary:focus { background-color: #a8213f; border-color: #a8213f; color: #fff; }
+        .btn-primary:active { background-color: #921c37 !important; border-color: #921c37 !important; }
     </style>
 </head>
 <body>
@@ -73,9 +83,10 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
     </div>
 </nav>
 
+<main>
 <div class="hero-catalogo py-4 mb-4">
     <div class="container">
-        <h2 class="fw-bold mb-1">Nuestro catálogo</h2>
+        <h1 class="h2 fw-bold mb-1">Nuestro catálogo</h1>
         <p class="text-muted mb-0">Detalles y regalos para cada ocasión, con entrega en Funza, Mosquera y Madrid.</p>
     </div>
 </div>
@@ -91,8 +102,8 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
 
     <form method="GET" class="row g-2 mb-4">
         <div class="col-md-5">
-            <label class="form-label small text-muted mb-1">Categoría</label>
-            <select name="categoria" class="form-select" onchange="this.form.submit()">
+            <label for="filtro-categoria" class="form-label small text-muted mb-1">Categoría</label>
+            <select id="filtro-categoria" name="categoria" class="form-select" onchange="this.form.submit()">
                 <option value="0">Todas las categorías</option>
                 <?php while ($c = $categorias->fetch_assoc()): ?>
                     <option value="<?= $c['id'] ?>" <?= $filtro_categoria == $c['id'] ? 'selected' : '' ?>>
@@ -102,8 +113,8 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
             </select>
         </div>
         <div class="col-md-5">
-            <label class="form-label small text-muted mb-1">Ocasión</label>
-            <select name="ocasion" class="form-select" onchange="this.form.submit()">
+            <label for="filtro-ocasion" class="form-label small text-muted mb-1">Ocasión</label>
+            <select id="filtro-ocasion" name="ocasion" class="form-select" onchange="this.form.submit()">
                 <option value="">Todas las ocasiones</option>
                 <?php foreach ($ocasiones as $o): ?>
                     <option value="<?= htmlspecialchars($o) ?>" <?= $filtro_ocasion === $o ? 'selected' : '' ?>>
@@ -129,6 +140,13 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
     <?php else: ?>
         <div class="row g-4">
             <?php while ($p = $productos->fetch_assoc()): ?>
+                <?php
+                    // Precio que paga el cliente hoy (con descuento si hay uno vigente)
+                    $hay_descuento = descuentoVigente($p);
+                    $precio_final  = precioFinal($p);
+                    $pct = (float)$p['descuento_porcentaje'];
+                    $pct_txt = (floor($pct) == $pct) ? (int)$pct : number_format($pct, 1, ',', '');
+                ?>
                 <div class="col-6 col-md-4 col-lg-3">
                     <div class="card card-producto h-100">
                         <?php if ($p['imagen']): ?>
@@ -139,12 +157,24 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
                             </div>
                         <?php endif; ?>
                         <div class="card-body d-flex flex-column">
-                            <h6 class="fw-bold mb-1"><?= htmlspecialchars($p['nombre']) ?></h6>
+                            <h2 class="h6 fw-bold mb-1"><?= htmlspecialchars($p['nombre']) ?></h2>
                             <p class="text-muted small mb-2"><?= htmlspecialchars($p['categoria']) ?></p>
-                            <?php if (!empty($p['ocasion'])): ?>
-                                <span class="badge badge-ocasion mb-2 align-self-start"><?= htmlspecialchars($p['ocasion']) ?></span>
+                            <?php if (!empty($p['ocasiones'])): ?>
+                                <div class="mb-2">
+                                    <?php foreach (explode('|', $p['ocasiones']) as $oc): ?>
+                                        <span class="badge badge-ocasion me-1"><?= htmlspecialchars($oc) ?></span>
+                                    <?php endforeach; ?>
+                                </div>
                             <?php endif; ?>
-                            <p class="fw-bold text-dark mt-auto mb-2">$<?= number_format($p['precio'], 0, ',', '.') ?></p>
+                            <p class="mt-auto mb-2">
+                                <?php if ($hay_descuento): ?>
+                                    <span class="text-muted text-decoration-line-through small">$<?= number_format($p['precio'], 0, ',', '.') ?></span>
+                                    <span class="fw-bold text-dark">$<?= number_format($precio_final, 0, ',', '.') ?></span>
+                                    <span class="badge bg-success">-<?= $pct_txt ?>%</span>
+                                <?php else: ?>
+                                    <span class="fw-bold text-dark">$<?= number_format($p['precio'], 0, ',', '.') ?></span>
+                                <?php endif; ?>
+                            </p>
                             <button class="btn btn-sm btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modalAgregar<?= $p['id'] ?>">
                                 <i class="bi bi-bag-plus"></i> Agregar al pedido
                             </button>
@@ -160,7 +190,7 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
                                 <input type="hidden" name="accion" value="agregar">
                                 <input type="hidden" name="id_producto" value="<?= $p['id'] ?>">
                                 <div class="modal-header">
-                                    <h5 class="modal-title"><?= htmlspecialchars($p['nombre']) ?></h5>
+                                    <h3 class="modal-title h5"><?= htmlspecialchars($p['nombre']) ?></h3>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body">
@@ -193,6 +223,7 @@ $items_carrito = isset($_SESSION['carrito']) ? count($_SESSION['carrito']) : 0;
         </div>
     <?php endif; ?>
 </div>
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>

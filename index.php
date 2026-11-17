@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/precios.php';
 $titulo = "Inicio";
 $conn = conectar();
 $resultado = $conn->query("SELECT p.*, c.nombre AS categoria FROM productos p JOIN categorias c ON p.id_categoria = c.id WHERE p.activo = 1 AND p.stock > 0 LIMIT 8");
@@ -31,6 +32,10 @@ require_once __DIR__ . '/includes/header.php';
 <?php if ($resultado && $resultado->num_rows > 0): ?>
 <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-4">
 <?php while ($p = $resultado->fetch_assoc()): ?>
+<?php
+    $conDescuento = descuentoVigente($p);
+    $precioFinal  = precioFinal($p);
+?>
 <div class="col">
 <div class="card card-producto h-100">
 <?php if (!empty($p['imagen'])): ?>
@@ -44,7 +49,15 @@ require_once __DIR__ . '/includes/header.php';
 <div class="card-body d-flex flex-column">
 <span class="badge-categoria mb-2"><?= htmlspecialchars($p['categoria']) ?></span>
 <h6 class="fw-bold"><?= htmlspecialchars($p['nombre']) ?></h6>
+<?php if ($conDescuento): ?>
+<p class="mb-3">
+    <span class="text-muted text-decoration-line-through">$<?= number_format($p['precio'], 0, ',', '.') ?></span>
+    <span class="precio ms-1">$<?= number_format($precioFinal, 0, ',', '.') ?></span>
+    <span class="badge bg-danger ms-1">-<?= (int)$p['descuento_porcentaje'] ?>%</span>
+</p>
+<?php else: ?>
 <p class="precio mb-3">$<?= number_format($p['precio'], 0, ',', '.') ?></p>
+<?php endif; ?>
 <a href="/jandel-gifts/modules/catalogo/producto.php?id=<?= $p['id'] ?>" class="btn btn-outline-primary btn-sm">
 <i class="bi bi-eye"></i> Ver producto
 </a>

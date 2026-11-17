@@ -22,13 +22,8 @@ $pedidos_pendientes = $conn->query("SELECT COUNT(*) as total FROM pedidos WHERE 
 <body>
 <div class="d-flex">
     <!-- SIDEBAR -->
-    <div class="sidebar-admin" style="width:220px;min-width:220px">
-        <div class="text-white text-center py-3 fw-bold fs-5">🎁 Admin</div>
-        <a href="dashboard.php" class="activo"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="productos.php"><i class="bi bi-box"></i> Productos</a>
-        <a href="pedidos.php"><i class="bi bi-bag"></i> Pedidos</a>
-        <hr style="border-color:#444">
-        <a href="logout.php"><i class="bi bi-box-arrow-left"></i> Cerrar sesión</a>
+    <div <!-- SIDEBAR -->
+<?php $menu_activo = 'dashboard'; require __DIR__ . '/../../includes/sidebar_admin.php'; ?>
     </div>
     <!-- CONTENIDO -->
     <div class="flex-grow-1 p-4">

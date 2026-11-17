@@ -1,0 +1,4 @@
+config/config.local.php
+hash.php
+.vscode/
+*.log

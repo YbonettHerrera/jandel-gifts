@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/precios.php';
 session_start();
 $conn = conectar();
 
@@ -12,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['accion']) && $_POST['a
     $id_producto = (int)$_POST['id_producto'];
     $cantidad = max(1, (int)$_POST['cantidad']);
 
-    $stmt = $conn->prepare("SELECT id, nombre, precio, imagen FROM productos WHERE id = ? AND activo = 1");
+    $stmt = $conn->prepare("SELECT id, nombre, precio, imagen, descuento_porcentaje, descuento_activo, descuento_inicio, descuento_fin FROM productos WHERE id = ? AND activo = 1");
     $stmt->bind_param("i", $id_producto);
     $stmt->execute();
     $producto = $stmt->get_result()->fetch_assoc();
@@ -21,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['accion']) && $_POST['a
         $_SESSION['carrito'][] = [
             'id_producto'       => $producto['id'],
             'nombre'            => $producto['nombre'],
-            'precio'            => $producto['precio'],
+            'precio'            => precioFinal($producto),
             'imagen'            => $producto['imagen'],
             'cantidad'          => $cantidad,
             'destinatario'      => trim($_POST['destinatario'] ?? ''),
@@ -55,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['accion']) && $_POST['a
     exit;
 }
 
+actualizarPreciosCarrito($conn);
 $carrito = $_SESSION['carrito'];
 $total = 0;
 foreach ($carrito as $item) {

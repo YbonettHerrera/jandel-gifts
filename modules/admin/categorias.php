@@ -73,15 +73,7 @@ $categorias = $conn->query(
 </head>
 <body>
 <div class="d-flex">
-    <div class="sidebar-admin" style="width:220px;min-width:220px">
-        <div class="text-white text-center py-3 fw-bold fs-5">🎁 Admin</div>
-        <a href="dashboard.php"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="productos.php"><i class="bi bi-box"></i> Productos</a>
-        <a href="categorias.php" class="activo"><i class="bi bi-tags"></i> Categorías</a>
-        <a href="pedidos.php"><i class="bi bi-bag"></i> Pedidos</a>
-        <hr style="border-color:#444">
-        <a href="logout.php"><i class="bi bi-box-arrow-left"></i> Cerrar sesión</a>
-    </div>
+    <?php $menu_activo = 'categorias'; require __DIR__ . '/../../includes/sidebar_admin.php'; ?>
     <div class="flex-grow-1 p-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4 class="fw-bold mb-0">Categorías</h4>

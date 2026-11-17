@@ -1,7 +1,13 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/precios.php';
+date_default_timezone_set('America/Bogota'); // hora de Colombia para fechas y número de pedido
 session_start();
 $conn = conectar();
+actualizarPreciosCarrito($conn);
+
+// Error propio para avisar al cliente cuando no hay stock suficiente
+class StockException extends Exception {}
 
 $carrito = $_SESSION['carrito'] ?? [];
 if (empty($carrito)) {
@@ -12,6 +18,13 @@ if (empty($carrito)) {
 $total = 0;
 foreach ($carrito as $item) {
     $total += $item['precio'] * $item['cantidad'];
+}
+
+// Cantidad total por producto (el mismo producto puede estar en varias líneas del carrito)
+$cantidades = [];
+foreach ($carrito as $item) {
+    $id = (int)$item['id_producto'];
+    $cantidades[$id] = ($cantidades[$id] ?? 0) + (int)$item['cantidad'];
 }
 
 $error = '';
@@ -37,40 +50,81 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } elseif (strtotime($fecha_entrega) < strtotime(date('Y-m-d'))) {
         $error = 'La fecha de entrega no puede ser anterior a hoy.';
     } else {
-        // Generar número de pedido único: JG-YYYYMMDD-XXXX
-        $numero_pedido = 'JG-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+        // Todo el pedido se guarda en una transacción: o se guarda completo, o no se guarda nada
+        $conn->begin_transaction();
+        try {
+            // 1. Verificar stock y precio actual de cada producto (bloquea las filas mientras se confirma)
+            $precios = [];
+            $stmt_prod = $conn->prepare("SELECT nombre, precio, stock, descuento_porcentaje, descuento_activo, descuento_inicio, descuento_fin FROM productos WHERE id = ? AND activo = 1 FOR UPDATE");
+            foreach ($cantidades as $id_producto => $cant) {
+                $stmt_prod->bind_param("i", $id_producto);
+                $stmt_prod->execute();
+                $prod = $stmt_prod->get_result()->fetch_assoc();
 
-        $stmt = $conn->prepare("INSERT INTO pedidos
-            (numero_pedido, nombre_cliente, telefono, nombre_destinatario, direccion, municipio, fecha_entrega, metodo_pago, total, estado)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')");
-        $stmt->bind_param("ssssssssd", $numero_pedido, $nombre_cliente, $telefono, $nombre_destinatario, $direccion, $municipio, $fecha_entrega, $metodo_pago, $total);
-        $stmt->execute();
-        $id_pedido = $stmt->insert_id;
-        $stmt->close();
+                if (!$prod) {
+                    throw new StockException('Uno de los productos de tu carrito ya no está disponible. Revisa tu carrito.');
+                }
+                if ((int)$prod['stock'] < $cant) {
+                    throw new StockException('No hay stock suficiente de "' . $prod['nombre'] . '". Disponibles: ' . (int)$prod['stock'] . '.');
+                }
+                $precios[$id_producto] = precioFinal($prod); // precio con descuento si hay promoción vigente
+            }
+            $stmt_prod->close();
 
-        $stmt_detalle = $conn->prepare("INSERT INTO detalle_pedido
-            (id_pedido, id_producto, cantidad, precio_unitario, subtotal, destinatario, mensaje_tarjeta, preferencia_color)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($carrito as $item) {
-            $subtotal = $item['precio'] * $item['cantidad'];
-            $stmt_detalle->bind_param(
-                "iiiddsss",
-                $id_pedido,
-                $item['id_producto'],
-                $item['cantidad'],
-                $item['precio'],
-                $subtotal,
-                $item['destinatario'],
-                $item['mensaje_tarjeta'],
-                $item['preferencia_color']
-            );
-            $stmt_detalle->execute();
+            // 2. Total con los precios actuales de la base de datos
+            $total_pedido = 0;
+            foreach ($carrito as $item) {
+                $total_pedido += $precios[(int)$item['id_producto']] * (int)$item['cantidad'];
+            }
+
+            // 3. Generar número de pedido único: JG-YYYYMMDD-XXXX
+            $numero_pedido = 'JG-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+
+            $stmt = $conn->prepare("INSERT INTO pedidos
+                (numero_pedido, nombre_cliente, telefono, nombre_destinatario, direccion, municipio, fecha_entrega, metodo_pago, total, estado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')");
+            $stmt->bind_param("ssssssssd", $numero_pedido, $nombre_cliente, $telefono, $nombre_destinatario, $direccion, $municipio, $fecha_entrega, $metodo_pago, $total_pedido);
+            $stmt->execute();
+            $id_pedido = $stmt->insert_id;
+            $stmt->close();
+
+            // 4. Detalle del pedido
+            $stmt_detalle = $conn->prepare("INSERT INTO detalle_pedido
+                (id_pedido, id_producto, cantidad, precio_unitario, subtotal, destinatario, mensaje_tarjeta, preferencia_color)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($carrito as $item) {
+                $id_prod  = (int)$item['id_producto'];
+                $cant     = (int)$item['cantidad'];
+                $precio_u = $precios[$id_prod];
+                $subtotal = $precio_u * $cant;
+                $dest     = $item['destinatario'];
+                $mensaje  = $item['mensaje_tarjeta'];
+                $color    = $item['preferencia_color'];
+                $stmt_detalle->bind_param("iiiddsss", $id_pedido, $id_prod, $cant, $precio_u, $subtotal, $dest, $mensaje, $color);
+                $stmt_detalle->execute();
+            }
+            $stmt_detalle->close();
+
+            // 5. Descontar el stock
+            $stmt_stock = $conn->prepare("UPDATE productos SET stock = stock - ? WHERE id = ?");
+            foreach ($cantidades as $id_producto => $cant) {
+                $stmt_stock->bind_param("ii", $cant, $id_producto);
+                $stmt_stock->execute();
+            }
+            $stmt_stock->close();
+
+            $conn->commit();
+
+            unset($_SESSION['carrito']);
+            header('Location: confirmacion.php?num=' . urlencode($numero_pedido));
+            exit;
+        } catch (StockException $e) {
+            $conn->rollback();
+            $error = $e->getMessage();
+        } catch (Throwable $e) {
+            $conn->rollback();
+            $error = 'No pudimos registrar tu pedido. Inténtalo de nuevo.';
         }
-        $stmt_detalle->close();
-
-        unset($_SESSION['carrito']);
-        header('Location: confirmacion.php?num=' . urlencode($numero_pedido));
-        exit;
     }
 }
 ?>
